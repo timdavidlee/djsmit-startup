@@ -13,7 +13,9 @@ set(SANITIZER "address" CACHE STRING "address | thread | none")
 add_library(common_flags INTERFACE)
 target_compile_options(common_flags INTERFACE -Wall -Wextra -Wpedantic -Wconversion -g)
 if(SANITIZER STREQUAL "address")
-    target_compile_options(common_flags INTERFACE -fsanitize=address,undefined -fno-omit-frame-pointer)
+    # -fno-sanitize-recover: undefined behavior stops the test instead of only printing a message.
+    target_compile_options(common_flags INTERFACE -fsanitize=address,undefined
+                           -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
     target_link_options(common_flags INTERFACE -fsanitize=address,undefined)
 elseif(SANITIZER STREQUAL "thread")
     target_compile_options(common_flags INTERFACE -fsanitize=thread)

@@ -67,9 +67,14 @@ vcpkg_installed/
 Testing/
 .cache/
 
-# Fuzzer binary and crash inputs (Project 10)
+# Fuzzer binaries, crash inputs and debug symbols (Project 10)
 fuzz
+fuzz_stream
 crash-*
+leak-*
+timeout-*
+oom-*
+*.dSYM/
 
 # Editor folders
 .vscode/

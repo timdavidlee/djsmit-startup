@@ -1,10 +1,11 @@
-# 10 C++ Mini Projects for Embedded Medical Device Work
+# 12 C++ Mini Projects for Embedded Medical Device Work
 
-Ten projects, about 50 to 60 hours in total. In Projects 1 to 6 you build something;
-in 7 to 10 you are handed a finished module with defects seeded in it and have to test
-and review it. Everything runs on a laptop with no hardware, but follows the rules
-firmware for an implantable device lives by: fixed memory, predictable timing, and no
-surprises.
+Twelve projects, about 70 to 90 hours in total. In Projects 1 to 6 you build something.
+In 7 to 10 you are handed a finished module with defects seeded in it and have to test
+and review it. In 11 and 12 you are handed working code that is hard to change and
+refactor it without altering what it does. Everything runs on a laptop with no hardware,
+but follows the rules firmware for an implantable device lives by: fixed memory,
+predictable timing, and no surprises.
 
 | # | Project | Core concepts | Time |
 | --- | --- | --- | --- |
@@ -14,10 +15,12 @@ surprises.
 | 4 | [Pacing state machine](projects/04-pacing-state-machine) | `enum class`, table-driven FSM, time abstraction, unit testing | 6–8 h |
 | 5 | [Interrupt-style ECG pipeline](projects/05-ecg-pipeline) | Atomics, lock-free SPSC queue, fixed-point math, C# interop | 8–10 h |
 | 6 | [Power-loss-safe settings store](projects/06-settings-store) | Trivially copyable structs, versioning, CRC reuse, fault injection | 5–6 h |
-| 7 | [Test: battery gauge](projects/07-test-battery-gauge) | Test design from a spec, equivalence classes, boundary values | 3–4 h |
-| 8 | [Test: event log](projects/08-test-event-log) | Undefined behavior, sanitizers, static analysis | 3–4 h |
-| 9 | [Test: pace timer](projects/09-test-pace-timer) | Requirement traceability, fake time, defect reports | 4–5 h |
-| 10 | [Test: packet parser](projects/10-test-packet-parser) | Fuzzing, coverage, independent test vectors, verification report | 6–8 h |
+| 7 | [Test: battery gauge](projects/07-test-battery-gauge) | Test design from a spec, equivalence classes, boundary values | 5–6 h |
+| 8 | [Test: event log](projects/08-test-event-log) | Undefined behavior, sanitizers, static analysis | 5–6 h |
+| 9 | [Test: pace timer](projects/09-test-pace-timer) | Requirement traceability, fake time, defect reports, mutation checks | 6–8 h |
+| 10 | [Test: telemetry link](projects/10-test-packet-parser) | Fuzzing, coverage, independent test vectors, verification report | 10–12 h |
+| 11 | [Refactor: legacy lead monitor](projects/11-refactor-lead-monitor) | Characterization tests, small steps, `enum class`, `constexpr`, RAII, removing globals | 6–8 h |
+| 12 | [Refactor: telemetry monolith](projects/12-refactor-telemetry-monolith) | Seams, golden-master tests, extracting pure logic, injecting hardware and time | 6–8 h |
 
 ## Getting started on a Mac
 
@@ -41,9 +44,9 @@ surprises.
    ctest --test-dir build --output-on-failure
    ```
 
-   On a fresh clone this builds one test executable (the Project 7 starter test) and it
-   should pass. The other projects get a test executable as soon as you add a `.cpp`
-   file to their `tests/` folder.
+   On a fresh clone this builds one test executable for each of Projects 7 to 12, and
+   every test should pass. Projects 1 to 6 get a test executable as soon as you add a
+   `.cpp` file to their `tests/` folder.
 
 Things that differ on a Mac:
 
@@ -56,12 +59,19 @@ Things that differ on a Mac:
   echo 'export PATH="$(brew --prefix llvm)/bin:$PATH"' >> ~/.zshrc
   ```
 
-- **The Project 10 fuzzer needs Homebrew's Clang.** Apple Clang does not ship the
-  fuzzer library, so build `fuzz.cpp` with `$(brew --prefix llvm)/bin/clang++` instead
-  of plain `clang++`.
+- **The Project 10 fuzzers need Homebrew's Clang.** Apple Clang does not ship the
+  fuzzer library, so build the fuzz harnesses with `$(brew --prefix llvm)/bin/clang++`
+  instead of plain `clang++`. The full command is at the top of each harness.
 - **`g++` is not GCC.** On a Mac, `g++` is Apple Clang under another name. For a real
   second compiler, run `brew install gcc` and use the versioned command it installs
-  (for example `g++-16`).
+  (for example `g++-16`). Homebrew's GoogleTest is built for Clang and will not link
+  with GCC, so tell CMake to download its own copy, and use a separate build folder:
+
+  ```bash
+  cmake -S . -B build-gcc -G Ninja -DCMAKE_CXX_COMPILER=g++-16 -DCMAKE_DISABLE_FIND_PACKAGE_GTest=ON
+  ```
+
+  GCC on Apple silicon has no thread sanitizer, so keep Clang for `-DSANITIZER=thread`.
 - **Use LLDB, not GDB.** GDB is poorly supported on Apple silicon; LLDB comes with the
   command line tools.
 - **Editor.** VS Code with the clangd and CMake Tools extensions works well. The build
@@ -76,8 +86,9 @@ ctest --test-dir build --output-on-failure
 ```
 
 Every `.cpp` in `projects/<name>/tests/` (plus `projects/<name>/src/`) becomes one test
-executable. The address and undefined-behavior sanitizers are on by default; use
-`-DSANITIZER=thread` for Project 5.
+executable. The address and undefined-behavior sanitizers are on by default, and a
+sanitizer report fails the test it happens in. Use `-DSANITIZER=thread` for Project 5
+and `-DSANITIZER=none` to see how the code behaves without them.
 
 ## Recommended setup
 
@@ -127,7 +138,7 @@ brew install llvm cmake ninja cppcheck googletest
 | .NET SDK | The C# interop stretch in Project 5 |
 
 **Later, for real hardware:** the Arm GNU toolchain (`arm-none-eabi-gcc`) and an STM32
-Nucleo board. None of the ten projects need it.
+Nucleo board. None of the projects need it.
 
 ## Ground rules for the "firmware" code
 
@@ -145,8 +156,9 @@ matters more than the code.
 
 ## How the test projects work (7 to 10)
 
-Each project gives a short specification and a finished module. The module compiles
-without warnings, and it contains seeded defects. In a medical device company, verifying
+Each project gives a short specification and a finished module in its `src/` folder,
+a few hundred lines long. The module compiles without warnings, and it contains seeded
+defects. Each project also has one starter test that passes, to show the setup. In a medical device company, verifying
 code against its requirements is as large a part of the job as writing it.
 
 - The specification is the source of truth. Where code and spec disagree, the code is wrong.
@@ -154,6 +166,18 @@ code against its requirements is as large a part of the job as writing it.
 - For every defect found, write a short report: which requirement it breaks, the smallest input that shows it, expected versus actual result, and how serious it would be in a real device.
 - Also note anything the spec leaves unclear. Finding gaps in requirements is part of the work.
 - The answer key is not in this repo. Ask whoever gave you the course once your reports are written.
+
+## How the refactoring projects work (11 and 12)
+
+Each project gives working code that is hard to live with, and tests that pin down what
+it does today. Most of a firmware engineer's time goes into code that already exists, so
+changing it safely is its own skill.
+
+- The behavior must not change. The supplied tests are the definition of "the same", and they pass before you start.
+- Work in small steps and run the tests after each one. If a step turns the tests red, undo it and take a smaller step.
+- Make one kind of change per commit: a rename, an extraction, a type change. Do not mix refactoring with new behavior.
+- Do not rewrite from scratch. The exercise is getting from the old shape to the new one without ever being broken in between.
+- No defects are seeded here. If you think you have found a real bug, write it down, pin it with a test, and fix it in a commit of its own.
 
 ## Medical terms used here
 
@@ -186,7 +210,7 @@ No medical background is assumed. Each project also explains its terms where the
 | EOL | End of life: the battery can no longer be relied on to run the device |
 | ADC | Analog-to-digital converter: hardware that turns a voltage into a number |
 
-## After the ten projects
+## After the twelve projects
 
 You are ready when you can explain each item below without notes.
 
@@ -203,10 +227,13 @@ You are ready when you can explain each item below without notes.
 - [ ] Deriving tests from a spec: equivalence classes, boundaries, and one test per requirement
 - [ ] What each tool can and cannot find: sanitizers, static analysis, fuzzing, coverage
 - [ ] Writing a defect report with a minimal trigger, expected versus actual, and severity
+- [ ] Refactoring in small steps under tests that pin the current behavior
+- [ ] What a seam is, and how to get hardware and time out of the way so logic can be unit tested
 
 **Worth reading next**
 
 - *Making Embedded Systems* by Elecia White.
 - *Effective Modern C++* by Scott Meyers.
+- *Working Effectively with Legacy Code* by Michael Feathers, for Projects 11 and 12.
 - The [C++ Core Guidelines](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines).
 - MISRA C++ and IEC 62304, at overview level. MISRA is a restricted C++ subset used in safety-critical code; IEC 62304 is the software lifecycle standard for medical devices.
