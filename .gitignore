@@ -66,3 +66,12 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# Fuzzer binary and crash inputs (Project 10)
+fuzz
+crash-*
+
+# Editor folders
+.vscode/
+.idea/
+.vs/
